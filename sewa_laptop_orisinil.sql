@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 22 Jul 2024 pada 14.21
+-- Waktu pembuatan: 22 Jul 2024 pada 19.13
 -- Versi server: 10.4.32-MariaDB
 -- Versi PHP: 8.2.12
 
@@ -18,73 +18,8 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `sewa_laptop`
+-- Database: `sewa_laptop_orisinil`
 --
-
-DELIMITER $$
---
--- Prosedur
---
-CREATE DEFINER=`root`@`localhost` PROCEDURE `delete_laptop` (`p_laptop_id` INT)   BEGIN
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-    START TRANSACTION;
-    DELETE FROM LaptopKategori WHERE laptop_id = p_laptop_id;
-    DELETE FROM SewaLaptop WHERE laptop_id = p_laptop_id;
-    DELETE FROM Laptop WHERE laptop_id = p_laptop_id;
-    COMMIT;
-END$$
-
-CREATE DEFINER=`root`@`localhost` PROCEDURE `delete_sewa` (`p_sewa_id` INT)   BEGIN
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-    START TRANSACTION;
-    DELETE FROM SewaLaptop WHERE sewa_id = p_sewa_id;
-    DELETE FROM Pengembalian WHERE sewa_id = p_sewa_id;
-    DELETE FROM Sewa WHERE sewa_id = p_sewa_id;
-    COMMIT;
-END$$
-
-CREATE DEFINER=`root`@`localhost` PROCEDURE `showOngoingRentals` ()   BEGIN
-    SELECT * FROM Sewa WHERE status = 'Berlangsung';
-END$$
-
-CREATE DEFINER=`root`@`localhost` PROCEDURE `updateLaptopStock` (IN `id_laptop` INT, IN `new_stock` INT)   BEGIN
-    IF (SELECT COUNT(*) FROM Laptop WHERE laptop_id = id_laptop) = 1 THEN
-        UPDATE Laptop
-        SET stok = new_stock
-        WHERE laptop_id = id_laptop;
-    ELSE
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Laptop not found or multiple entries detected';
-    END IF;
-END$$
-
---
--- Fungsi
---
-CREATE DEFINER=`root`@`localhost` FUNCTION `calculateRentalCost` (`laptop_id` INT, `days` INT) RETURNS DECIMAL(10,2)  BEGIN
-    DECLARE rental_cost DECIMAL(10, 2);
-    SELECT harga_sewa_per_hari INTO rental_cost
-    FROM Laptop
-    WHERE laptop_id = laptop_id
-    LIMIT 1;
-    RETURN rental_cost * days;
-END$$
-
-CREATE DEFINER=`root`@`localhost` FUNCTION `getTotalAvailableLaptops` () RETURNS INT(11)  BEGIN
-    DECLARE total INT;
-    SELECT SUM(stok) INTO total FROM Laptop;
-    RETURN total;
-END$$
-
-DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -182,35 +117,6 @@ INSERT INTO `laptop` (`laptop_id`, `merek`, `model`, `nomor_seri`, `harga_sewa_p
 (4, 'Asus', 'ZenBook 14', 'JKL901234', 110000.00, 7),
 (5, 'Lenovo', 'ThinkPad X1', 'MNO567890', 130000.00, 6);
 
---
--- Trigger `laptop`
---
-DELIMITER $$
-CREATE TRIGGER `after_delete_laptop` AFTER DELETE ON `laptop` FOR EACH ROW BEGIN
-    INSERT INTO LogLaptop (laptop_id, action, old_value) 
-    VALUES (OLD.laptop_id, 'DELETE', CONCAT('Merek: ', OLD.merek, ', Model: ', OLD.model, ', Nomor Seri: ', OLD.nomor_seri, ', Harga Sewa per Hari: ', OLD.harga_sewa_per_hari, ', Stok: ', OLD.stok));
-END
-$$
-DELIMITER ;
-DELIMITER $$
-CREATE TRIGGER `after_insert_laptop` AFTER INSERT ON `laptop` FOR EACH ROW BEGIN
-    INSERT INTO LogLaptop (laptop_id, action, new_value) 
-    VALUES (NEW.laptop_id, 'INSERT', CONCAT('Merek: ', NEW.merek, ', Model: ', NEW.model, ', Nomor Seri: ', NEW.nomor_seri, ', Harga Sewa per Hari: ', NEW.harga_sewa_per_hari, ', Stok: ', NEW.stok));
-END
-$$
-DELIMITER ;
-DELIMITER $$
-CREATE TRIGGER `before_update_laptop` BEFORE UPDATE ON `laptop` FOR EACH ROW BEGIN
-    IF NEW.stok < 0 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stok tidak boleh negatif';
-    ELSEIF NEW.stok != OLD.stok THEN
-        INSERT INTO LogLaptop (laptop_id, action, old_value, new_value) 
-        VALUES (OLD.laptop_id, 'UPDATE', CONCAT('Stok: ', OLD.stok), CONCAT('Stok: ', NEW.stok));
-    END IF;
-END
-$$
-DELIMITER ;
-
 -- --------------------------------------------------------
 
 --
@@ -236,69 +142,6 @@ INSERT INTO `laptopkategori` (`laptop_id`, `kategori_id`) VALUES
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `laptopsewa`
---
-
-CREATE TABLE `laptopsewa` (
-  `sewa_id` int(11) NOT NULL,
-  `laptop_id` int(11) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- Struktur dari tabel `loglaptop`
---
-
-CREATE TABLE `loglaptop` (
-  `log_id` int(11) NOT NULL,
-  `laptop_id` int(11) DEFAULT NULL,
-  `action` varchar(50) DEFAULT NULL,
-  `old_value` text DEFAULT NULL,
-  `new_value` text DEFAULT NULL,
-  `change_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data untuk tabel `loglaptop`
---
-
-INSERT INTO `loglaptop` (`log_id`, `laptop_id`, `action`, `old_value`, `new_value`, `change_date`) VALUES
-(1, 1, 'UPDATE', 'Stok: 10', 'Stok: 15', '2024-07-22 19:19:30');
-
--- --------------------------------------------------------
-
---
--- Struktur dari tabel `logpelanggan`
---
-
-CREATE TABLE `logpelanggan` (
-  `log_id` int(11) NOT NULL,
-  `pelanggan_id` int(11) DEFAULT NULL,
-  `action` varchar(50) DEFAULT NULL,
-  `old_value` text DEFAULT NULL,
-  `new_value` text DEFAULT NULL,
-  `change_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- Struktur dari tabel `logsewa`
---
-
-CREATE TABLE `logsewa` (
-  `log_id` int(11) NOT NULL,
-  `sewa_id` int(11) DEFAULT NULL,
-  `action` varchar(50) DEFAULT NULL,
-  `old_value` text DEFAULT NULL,
-  `new_value` text DEFAULT NULL,
-  `change_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
 -- Struktur dari tabel `pelanggan`
 --
 
@@ -319,30 +162,6 @@ INSERT INTO `pelanggan` (`pelanggan_id`, `nama`, `alamat`, `jenis_kelamin`) VALU
 (3, 'Pelanggan3', 'Alamat3', 'L'),
 (4, 'Pelanggan4', 'Alamat4', 'P'),
 (5, 'Pelanggan5', 'Alamat5', 'L');
-
---
--- Trigger `pelanggan`
---
-DELIMITER $$
-CREATE TRIGGER `after_update_pelanggan` AFTER UPDATE ON `pelanggan` FOR EACH ROW BEGIN
-    INSERT INTO LogPelanggan (pelanggan_id, action, old_value, new_value) 
-    VALUES (OLD.pelanggan_id, 'UPDATE', 
-            CONCAT('Nama: ', OLD.nama, ', Alamat: ', OLD.alamat, ', Jenis Kelamin: ', OLD.jenis_kelamin), 
-            CONCAT('Nama: ', NEW.nama, ', Alamat: ', NEW.alamat, ', Jenis Kelamin: ', NEW.jenis_kelamin));
-END
-$$
-DELIMITER ;
-DELIMITER $$
-CREATE TRIGGER `before_insert_pelanggan` BEFORE INSERT ON `pelanggan` FOR EACH ROW BEGIN
-    IF (SELECT COUNT(*) FROM Pelanggan WHERE nama = NEW.nama) > 0 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nama pelanggan sudah ada';
-    ELSE
-        INSERT INTO LogPelanggan (pelanggan_id, action, new_value) 
-        VALUES (NEW.pelanggan_id, 'INSERT', CONCAT('Nama: ', NEW.nama, ', Alamat: ', NEW.alamat, ', Jenis Kelamin: ', NEW.jenis_kelamin));
-    END IF;
-END
-$$
-DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -397,21 +216,6 @@ INSERT INTO `sewa` (`sewa_id`, `pelanggan_id`, `admin_id`, `tanggal_sewa`, `tang
 (4, 4, 4, '2024-07-04', '2024-07-14', 800000.00, 'Berlangsung'),
 (5, 5, 5, '2024-07-05', '2024-07-15', 900000.00, 'Dibatalkan');
 
---
--- Trigger `sewa`
---
-DELIMITER $$
-CREATE TRIGGER `before_delete_sewa` BEFORE DELETE ON `sewa` FOR EACH ROW BEGIN
-    IF OLD.status != 'Dibatalkan' THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hanya penyewaan yang dibatalkan yang bisa dihapus';
-    ELSE
-        INSERT INTO LogSewa (sewa_id, action, old_value) 
-        VALUES (OLD.sewa_id, 'DELETE', CONCAT('Pelanggan ID: ', OLD.pelanggan_id, ', Admin ID: ', OLD.admin_id, ', Tanggal Sewa: ', OLD.tanggal_sewa, ', Tanggal Kembali: ', OLD.tanggal_kembali, ', Total Biaya: ', OLD.total_biaya, ', Status: ', OLD.status));
-    END IF;
-END
-$$
-DELIMITER ;
-
 -- --------------------------------------------------------
 
 --
@@ -434,74 +238,6 @@ INSERT INTO `sewalaptop` (`sewa_id`, `laptop_id`, `jumlah`) VALUES
 (3, 3, 1),
 (4, 4, 1),
 (5, 5, 1);
-
--- --------------------------------------------------------
-
---
--- Stand-in struktur untuk tampilan `view_ongoing_rentals`
--- (Lihat di bawah untuk tampilan aktual)
---
-CREATE TABLE `view_ongoing_rentals` (
-`sewa_id` int(11)
-,`pelanggan_id` int(11)
-,`admin_id` int(11)
-,`total_biaya` decimal(10,2)
-);
-
--- --------------------------------------------------------
-
---
--- Stand-in struktur untuk tampilan `view_pelanggan_horizontal`
--- (Lihat di bawah untuk tampilan aktual)
---
-CREATE TABLE `view_pelanggan_horizontal` (
-`pelanggan_id` int(11)
-,`nama` varchar(100)
-,`jenis_kelamin` enum('L','P')
-);
-
--- --------------------------------------------------------
-
---
--- Stand-in struktur untuk tampilan `view_sewa_vertical`
--- (Lihat di bawah untuk tampilan aktual)
---
-CREATE TABLE `view_sewa_vertical` (
-`sewa_id` int(11)
-,`pelanggan_id` int(11)
-,`admin_id` int(11)
-,`tanggal_sewa` date
-,`tanggal_kembali` date
-,`total_biaya` decimal(10,2)
-,`status` enum('Selesai','Berlangsung','Dibatalkan')
-);
-
--- --------------------------------------------------------
-
---
--- Struktur untuk view `view_ongoing_rentals`
---
-DROP TABLE IF EXISTS `view_ongoing_rentals`;
-
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_ongoing_rentals`  AS SELECT `sewa`.`sewa_id` AS `sewa_id`, `sewa`.`pelanggan_id` AS `pelanggan_id`, `sewa`.`admin_id` AS `admin_id`, `sewa`.`total_biaya` AS `total_biaya` FROM `sewa` WHERE `sewa`.`status` = 'Berlangsung'WITH CASCADED CHECK OPTION  ;
-
--- --------------------------------------------------------
-
---
--- Struktur untuk view `view_pelanggan_horizontal`
---
-DROP TABLE IF EXISTS `view_pelanggan_horizontal`;
-
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_pelanggan_horizontal`  AS SELECT `pelanggan`.`pelanggan_id` AS `pelanggan_id`, `pelanggan`.`nama` AS `nama`, `pelanggan`.`jenis_kelamin` AS `jenis_kelamin` FROM `pelanggan` ;
-
--- --------------------------------------------------------
-
---
--- Struktur untuk view `view_sewa_vertical`
---
-DROP TABLE IF EXISTS `view_sewa_vertical`;
-
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_sewa_vertical`  AS SELECT `sewa`.`sewa_id` AS `sewa_id`, `sewa`.`pelanggan_id` AS `pelanggan_id`, `sewa`.`admin_id` AS `admin_id`, `sewa`.`tanggal_sewa` AS `tanggal_sewa`, `sewa`.`tanggal_kembali` AS `tanggal_kembali`, `sewa`.`total_biaya` AS `total_biaya`, `sewa`.`status` AS `status` FROM `sewa` WHERE `sewa`.`status` = 'Selesai' ;
 
 --
 -- Indexes for dumped tables
@@ -539,31 +275,6 @@ ALTER TABLE `laptop`
 ALTER TABLE `laptopkategori`
   ADD PRIMARY KEY (`laptop_id`,`kategori_id`),
   ADD KEY `kategori_id` (`kategori_id`);
-
---
--- Indeks untuk tabel `laptopsewa`
---
-ALTER TABLE `laptopsewa`
-  ADD PRIMARY KEY (`sewa_id`,`laptop_id`),
-  ADD KEY `idx_sewa_laptop` (`sewa_id`,`laptop_id`);
-
---
--- Indeks untuk tabel `loglaptop`
---
-ALTER TABLE `loglaptop`
-  ADD PRIMARY KEY (`log_id`);
-
---
--- Indeks untuk tabel `logpelanggan`
---
-ALTER TABLE `logpelanggan`
-  ADD PRIMARY KEY (`log_id`);
-
---
--- Indeks untuk tabel `logsewa`
---
-ALTER TABLE `logsewa`
-  ADD PRIMARY KEY (`log_id`);
 
 --
 -- Indeks untuk tabel `pelanggan`
@@ -622,24 +333,6 @@ ALTER TABLE `kategorilaptop`
 --
 ALTER TABLE `laptop`
   MODIFY `laptop_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
-
---
--- AUTO_INCREMENT untuk tabel `loglaptop`
---
-ALTER TABLE `loglaptop`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT untuk tabel `logpelanggan`
---
-ALTER TABLE `logpelanggan`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT untuk tabel `logsewa`
---
-ALTER TABLE `logsewa`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT untuk tabel `pelanggan`
